@@ -1,11 +1,11 @@
 module github.com/graxinc/kmutex
 
-go 1.21.0
+go 1.23
 
 require (
+	github.com/graxinc/syncmap v0.0.0-20241016221111-1f2c2c6f98d1
 	github.com/im7mortal/kmutex v1.0.1
 	github.com/pkg/profile v1.7.0
-	github.com/shiolier/syncmap v0.0.0-20220524130520-92e33688b79f
 )
 
 require (
