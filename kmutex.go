@@ -3,7 +3,7 @@ package kmutex
 import (
 	"sync"
 
-	"github.com/shiolier/syncmap"
+	"github.com/graxinc/syncmap"
 )
 
 // Concurrent safe.
