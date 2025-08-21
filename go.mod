@@ -1,6 +1,6 @@
 module github.com/graxinc/kmutex
 
-go 1.23
+go 1.24
 
 require (
 	github.com/graxinc/syncmap v0.0.0-20241016221111-1f2c2c6f98d1

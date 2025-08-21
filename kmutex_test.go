@@ -17,34 +17,69 @@ type kmutexer interface {
 }
 
 func TestKmutex(t *testing.T) {
-	km := kmutex.New[int]()
+	t.Parallel()
 
-	resources := make([]int, 10)
+	do := func(km *kmutex.KMutex[int]) {
+		resources := make([]int, 10)
 
-	var wg sync.WaitGroup
-	for i := 0; i < 100; i++ {
-		i := i
+		var wg sync.WaitGroup
+		for i := range 100 {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
 
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+				rando := rand.New(rand.NewSource(int64(i))) //nolint:gosec
 
-			rando := rand.New(rand.NewSource(int64(i))) //nolint:gosec
+				for range 1000 {
+					idx := rando.Intn(len(resources))
 
-			for j := 0; j < 1000; j++ {
-				idx := rando.Intn(len(resources))
+					// Relies on Go race detector being enabled.
+					unlock := km.Lock(idx)
+					resources[idx] = resources[idx] + 1
+					unlock()
+				}
+			}()
+		}
+		wg.Wait()
 
-				// Relies on Go race detector being enabled.
-				unlock := km.Lock(idx)
-				resources[idx] = resources[idx] + 1
-				unlock()
-			}
-		}()
+		for i := range resources {
+			km.Lock(i)
+		}
 	}
-	wg.Wait()
+	t.Run("mu", func(t *testing.T) {
+		do(kmutex.New[int]())
+	})
+	t.Run("sema_1", func(t *testing.T) {
+		km := kmutex.NewLocker[int](func() kmutex.Locker {
+			return kmutex.NewSemaLocker(1)
+		})
+		do(km)
+	})
+}
 
-	for i := range resources {
-		km.Lock(i)
+func TestSemaLocker_equal(t *testing.T) {
+	t.Parallel()
+
+	equalFatal := func(a, b kmutex.Locker) {
+		t.Helper()
+		if a != b {
+			t.Fatal("not equal")
+		}
+	}
+
+	s1 := kmutex.NewSemaLocker(1)
+	s2 := kmutex.NewSemaLocker(1)
+	s3 := kmutex.NewSemaLocker(2)
+
+	equalFatal(s1, s1)
+	equalFatal(s2, s2)
+	equalFatal(s3, s3)
+
+	if s1 == s2 {
+		t.Fatal("should not be equal")
+	}
+	if s1 == s3 {
+		t.Fatal("should not be equal")
 	}
 }
 
@@ -54,15 +89,14 @@ func BenchmarkKMutex_uniqueKeys(b *testing.B) {
 
 		do := func() {
 			var wg sync.WaitGroup
-			for i := 0; i < 100; i++ {
-				i := i
+			for i := range 100 {
 				wg.Add(1)
 				go func() {
 					defer wg.Done()
 
 					rando := rand.New(rand.NewSource(int64(i))) //nolint:gosec
 
-					for j := 0; j < 1000; j++ {
+					for range 1000 {
 						idx := rando.Intn(100)
 
 						unlock := km.Lock(idx)
@@ -74,13 +108,19 @@ func BenchmarkKMutex_uniqueKeys(b *testing.B) {
 			wg.Wait()
 		}
 
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			do()
 		}
 	}
 
-	b.Run("grax", func(b *testing.B) {
+	b.Run("grax mu", func(b *testing.B) {
 		km := kmutex.New[int]()
+		do(b, km)
+	})
+	b.Run("grax sema 2", func(b *testing.B) {
+		km := kmutex.NewLocker[int](func() kmutex.Locker {
+			return kmutex.NewSemaLocker(2)
+		})
 		do(b, km)
 	})
 	b.Run("immortal", func(b *testing.B) {
